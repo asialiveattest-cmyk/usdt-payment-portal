@@ -1,0 +1,32 @@
+name: Extract Website ZIP
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract website files
+        run: |
+          mkdir -p /tmp/site
+          unzip -q usdt-payment-portal.zip -d /tmp/site
+
+          cp -R /tmp/site/usdt-payment-portal/. .
+
+          rm -f usdt-payment-portal.zip
+
+      - name: Commit extracted files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Extract USDT payment portal source files" || echo "No changes"
+          git push
