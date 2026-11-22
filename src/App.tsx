@@ -35,6 +35,7 @@ export default function App() {
   const [instructions, setInstructions] = useState('')
   const [enabled, setEnabled] = useState(true)
   const [qrFile, setQrFile] = useState<File | null>(null)
+  const [walletChooserOpen, setWalletChooserOpen] = useState(false)
 
   const configured = Boolean(supabase)
   const amountText = useMemo(() => Number(settings.amount || 0).toLocaleString(undefined, { maximumFractionDigits: 6 }), [settings.amount])
@@ -137,18 +138,38 @@ export default function App() {
     finally { setSaving(false) }
   }
 
-  // Binance does not document a public URL that pre-fills an external TRC20 withdrawal.
-  // Open its official site/withdrawal entry point and copy the address for manual paste.
+  // The page cannot inspect installed apps. It offers supported wallet handoffs instead.
   const binanceWithdrawUrl = 'https://www.binance.com/en/my/wallet/account/main/withdrawal/crypto'
+  const tronLinkOpenUrl = 'tronlinkoutside://pull.activity?param=%7B%22action%22%3A%22open%22%2C%22protocol%22%3A%22TronLink%22%2C%22version%22%3A%221.0%22%7D'
+  const trustUsdtTronContract = 'TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcd'
+  const trustWalletSendUrl = `https://link.trustwallet.com/send?asset=${encodeURIComponent(`c195_t${trustUsdtTronContract}`)}&address=${encodeURIComponent(settings.wallet_address)}&amount=${encodeURIComponent(String(settings.amount))}`
+  const okxWalletUrl = 'https://www.okx.com/download'
   const payReady = settings.wallet_address.length > 0 && settings.payment_enabled && Number(settings.amount) > 0
 
-  async function payWithBinance() {
+  async function chooseWallet(walletName: string) {
     if (!payReady) return
-    // Open synchronously from the click to reduce popup blocking.
-    const opened = window.open(binanceWithdrawUrl, '_blank', 'noopener,noreferrer')
-    await copy(settings.wallet_address, 'TRC20 wallet address')
-    setNotice(`Address copied. In Binance, choose USDT, paste the address, select TRON (TRC20), and enter ${amountText} USDT.`)
-    if (!opened) setNotice('Address copied. Open Binance manually, choose USDT withdrawal, select TRON (TRC20), and enter the displayed amount.')
+    setWalletChooserOpen(false)
+    if (walletName === 'Binance') {
+      window.open(binanceWithdrawUrl, '_blank', 'noopener,noreferrer')
+      await copy(settings.wallet_address, 'TRC20 wallet address')
+      setNotice(`Address copied. In Binance, choose USDT withdrawal, select TRON (TRC20), and enter ${amountText} USDT.`)
+      return
+    }
+    if (walletName === 'Trust Wallet') {
+      window.location.href = trustWalletSendUrl
+      return
+    }
+    if (walletName === 'TronLink') {
+      window.location.href = tronLinkOpenUrl
+      await copy(settings.wallet_address, 'TRC20 wallet address')
+      setNotice('TronLink opened if installed. Paste the copied address, choose USDT TRC20, and enter the displayed amount.')
+      return
+    }
+    if (walletName === 'OKX Wallet') {
+      window.open(okxWalletUrl, '_blank', 'noopener,noreferrer')
+      await copy(settings.wallet_address, 'TRC20 wallet address')
+      setNotice('OKX Wallet opened/download page. Paste the copied address and enter the displayed amount on TRON network.')
+    }
   }
 
   return <main className="page">
@@ -193,14 +214,25 @@ export default function App() {
       </div>
       <p className="qr-caption">Scan this code with your wallet to enter the deposit address.</p>
       <div className="pay-actions">
-        <button className="primary pay-now" disabled={!payReady} onClick={payWithBinance}><Wallet size={17}/> Pay with Binance · {amountText} USDT <ExternalLink size={15}/></button>
+        <button className="primary pay-now" disabled={!payReady} onClick={() => setWalletChooserOpen(true)}><Wallet size={17}/> Pay Now · {amountText} USDT <ExternalLink size={15}/></button>
         <div className="wallet-links">
           <button className="copy-link" onClick={() => copy(settings.wallet_address, 'TRC20 wallet address')} disabled={!settings.wallet_address}><Copy size={13}/> Copy wallet address</button>
           <button className="copy-link" onClick={() => copy(String(settings.amount), 'Payment amount')}><Copy size={13}/> Copy amount</button>
         </div>
-        <p className="wallet-note">Binance opens its withdrawal entry point. Paste the copied address, choose USDT, explicitly select TRON (TRC20), and enter {amountText} USDT. Binance does not provide a documented public link that automatically pre-fills an external withdrawal. Review the network, address and fee in Binance before confirming. This page never sends funds.</p>
+        <p className="wallet-note">Choose your wallet. Some apps can open a prefilled send screen; others require you to paste the address and amount manually. Always select USDT on TRON (TRC20) and verify details before confirming.</p>
       </div>
     </section>
+
+    {walletChooserOpen && <div className="modal-backdrop" role="presentation" onClick={() => setWalletChooserOpen(false)}>
+      <section className="wallet-modal" role="dialog" aria-modal="true" aria-labelledby="wallet-title" onClick={e => e.stopPropagation()}>
+        <div className="modal-head"><div><h2 id="wallet-title">Choose your wallet</h2><p>Pay {amountText} USDT · TRON (TRC20)</p></div><button className="modal-close" onClick={() => setWalletChooserOpen(false)} aria-label="Close">×</button></div>
+        <button className="wallet-option" onClick={() => chooseWallet('Binance')}><span className="wallet-icon binance-icon">B</span><span><b>Binance</b><small>Opens withdrawal; address copied</small></span><ExternalLink size={16}/></button>
+        <button className="wallet-option" onClick={() => chooseWallet('Trust Wallet')}><span className="wallet-icon trust-icon">T</span><span><b>Trust Wallet</b><small>Attempts to open prefilled USDT send</small></span><ExternalLink size={16}/></button>
+        <button className="wallet-option" onClick={() => chooseWallet('TronLink')}><span className="wallet-icon tron-icon">T</span><span><b>TronLink</b><small>Opens wallet; copy and enter details</small></span><ExternalLink size={16}/></button>
+        <button className="wallet-option" onClick={() => chooseWallet('OKX Wallet')}><span className="wallet-icon okx-icon">O</span><span><b>OKX Wallet</b><small>Opens wallet download page; manual transfer</small></span><ExternalLink size={16}/></button>
+        <p className="wallet-disclaimer">Your browser cannot detect all installed wallet apps. An app may open only if installed and supported. Confirm USDT, TRON (TRC20), recipient and amount inside the wallet. This page never sends funds.</p>
+      </section>
+    </div>}
 
     <section className="instructions-card">
       <h3>DEPOSIT INSTRUCTIONS</h3>
